@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Semi-batch</title>
+
+  <script src="https://unpkg.com/mathjs@7.0.1/dist/math.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.5.0/Chart.min.js"></script>
+
+  <style>
+form  { display: table;      }
+label { display: table-cell; }
+input { display: table-cell; }
+.p_form{ display: table-row;  }
+
+.imagesize{
+height: auto;
+width: 60%;
+text-align: center;
+}
+
+    body {
+      font-family: sans-serif;
+    }
+
+  .item1{background:whitesmoke;}
+  .item2{background:whitesmoke;}
+  .item3{background:whitesmoke;}
+  .container {
+    font-size: 12px;
+    background: white;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0px, 1fr));
+    grid-template-rows: 0.8fr;
+    grid-gap: 20px;
+  }
+
+  </style>
+
+</head>
+<body>
+  <h1>Isothermal semi-batch reactor</h1>
+  <p>
+    This example simulates the concentration profiles inside a semi-batch reactor for the irreversible reaction A + B -> C under isothermal conditions using a system of ordinary differential equations.
+  </p>
+
+    <!--Form for submitting parameters-->
+<div class="container"> <!-- upper section of container 3 start-->
+
+  <div> <!-- Row 1 column 1 start-->
+
+    <form action="/action_page.php">
+      <p class="p_form">
+        <label for="timestep_size">Time step size [s]:</label>
+        <input type="text" id="timestep_size" name="timestep_size" value="1"><br>
+    </p>
+    <p class="p_form">
+        <label for="initial_volume">Initial volume [L]:</label>
+        <input type="text" id="initial_volume" name="initial_volume" value="6000"><br>
+  </p>
+  <p class="p_form">
+        <label for="feed_rate">Feed rate [L/s]:</label>
+        <input type="text" id="feed_rate" name="feed_rate" value="10"><br>
+      </p>
+      <p class="p_form">
+        <label for="feed_concentration">Feed concentration [mol/L]:</label>
+        <input type="text" id="feed_concentration" name="feed_concentration" value="0.1"><br>
+      </p>
+      <p class="p_form">
+        <label for="feed_concentration">Simulation time [s]:</label>
+        <input type="text" id="simulation_time" name="simulation_time" value="1600"><br>
+      </p>
+      <p class="p_form">
+        <label for="conc_a0">cA0 [mol/L]:</label>
+        <input type="text" id="conc_a0" name="conc_a0" value="0"><br>
+      </p>
+      <p class="p_form">
+        <label for="conc_b0">cB0 [mol/L]:</label>
+        <input type="text" id="conc_b0" name="conc_b0" value="0.1"><br>
+      </p>
+      <p class="p_form">
+        <label for="conc_c0">cC0 [mol/L]:</label>
+        <input type="text" id="conc_c0" name="conc_c0" value="0"><br>
+      </p>
+      <p class="p_form">
+        <label for="rate_constant">rate constant k [L/mol/s]:</label>
+        <input type="text" id="rate_constant" name="rate_constant" value="0.1"><br><br><br>
+    </p>
+    </form> 
+
+    <p>
+        <button type="button" onclick="myFunction()">Run simulation</button>        <!-- Button for starting the calcs-->
+        
+        </p>
+
+    </div> <!-- Row 1 column 1 end-->
+
+    <div> <!-- Row 1 column 2 start-->
+
+      <img src="Isothermal_semibatch.png" alt="Picture of semi-batch reactor with feed" class="imagesize">
+
+</div>    <!-- Row 1 column 2 end--> 
+
+  <div class="item1" style="position:relative; height:1fr; width:1fr">  <!-- Row 2 column 1 end--> 
+       <canvas id="canvas1"></canvas>
+  </div> <!-- Row 2 column 1 end--> 
+  <div class="item2" style="position:relative; height:1fr; width:1fr">  <!-- Row 2 column 2 start--> 
+       <canvas id="canvas2"></canvas>
+  </div> <!-- Row 2 column 2 end--> 
+  <div class="item3" style="position:relative; height:1fr; width:1fr">  <!-- Row 3 column 1 start--> 
+    <canvas id="canvas3"></canvas>
+</div> <!-- Row 3 column 1 end--> 
+
+</div>  <!-- Container end--> 
+
+  <script>
+
+          // Import the numerical ODE solver
+    math.import({ndsolve:ndsolve})
+
+    function ndsolve(f, x0, dt, tmax) {
+      const n = f.size()[0]  // Number of variables
+      const x = x0.clone()   // Current values of variables
+      const dxdt = []        // Temporary variable to hold time-derivatives
+      const result = []      // Contains entire solution
+
+      const nsteps = math.divide(tmax, dt)   // Number of time steps
+      for(let i=0; i<nsteps; i++) {
+        // Compute derivatives
+        for(let j=0; j<n; j++) {
+          dxdt[j] = f.get([j]).apply(null, x.toArray())
+        }
+        // Euler method to compute next time step
+        for(let j=0; j<n; j++) {
+          x.set([j], math.add(x.get([j]), math.multiply(dxdt[j], dt)))
+        }
+        result.push(x.clone())
+      }
+
+      return math.matrix(result)
+    }
+
+
+// Function for calculating the concentration from molar amounts and volume
+// input: three vectors n, V and t of same length
+// output: array with x (time) and y (concentration) values for plotting
+    function concentration_calc(n,V,t){
+var storage = [];
+for (var i = 0; i < n.length; i++) {
+var temptime = t[i]/1;
+var json = {x: temptime, y: n[i] / V[i]};
+storage.push(json);
+}
+return storage
+    }
+    function myFunction(){
+
+
+    // Create a math.js context for our simulation. Everything else occurs in the context of the expression parser!
+
+    const sim2 = math.parser()
+    var timestep = document.getElementById("timestep_size").value;
+    var teststring2 = "dt = " + timestep
+    var initial_volume = document.getElementById("initial_volume").value;
+
+    var feed_rate = document.getElementById("feed_rate").value;
+    feed_rate = "F = " + feed_rate
+    var feed_concentration = document.getElementById("feed_concentration").value;
+    feed_concentration = "caF = " + feed_concentration
+    var simulation_time = document.getElementById("simulation_time").value;
+    simulation_time = "tfinal = " + simulation_time
+    var cA_init = document.getElementById("conc_a0").value;
+    var cB_init = document.getElementById("conc_b0").value;
+    var cC_init = document.getElementById("conc_c0").value;
+    var nA_init = initial_volume * cA_init
+    var nB_init = initial_volume * cB_init
+    var nC_init = initial_volume * cC_init
+    initial_volume = "V0 = " + initial_volume
+    cA_init = "ca0 = " + cA_init
+    nA_init = "na0 = " + nA_init
+    nB_init = "nb0 = " + nB_init
+    nC_init = "nc0 = " + nC_init
+    var k_val = document.getElementById("rate_constant").value;
+    k_val = "k = " + k_val 
+
+    var teststring = "dt = " + timestep + " s"
+ 
+    sim2.evaluate(teststring2)
+    sim2.evaluate(simulation_time)                  // Simulation duration
+
+    sim2.evaluate(feed_rate) // [L/s] Feed rate of component a solution
+    sim2.evaluate(feed_concentration) // [mol / L] Feed concentration of component a solution
+    sim2.evaluate(cA_init) // [mol / L] Initial concentration of component a
+    sim2.evaluate(nB_init) // [mol] Initial amount of component b
+    sim2.evaluate(nC_init) // [mol] Initial amount of component c
+    sim2.evaluate(initial_volume) // [L] initial volume in reactor
+    //sim2.evaluate("V0 = 6000") // [L] initial volume in reactor
+    sim2.evaluate(nA_init) // [mol] initial amount of component a
+    sim2.evaluate(k_val) // [L/mol/s] reaction rate constant
+    console.log(sim2.evaluate(nA_init).toString())
+
+    // New equations
+    sim2.evaluate("dtdt(t, na, nb, nc, V) = 1")
+    sim2.evaluate("dnadt(t, na, nb, nc, V) = F*caF - k * na * nb / V")
+    sim2.evaluate("dnbdt(t, na, nb, nc, V) = - k * na * nb / V")
+    sim2.evaluate("dncdt(t, na, nb, nc, V) = k * na * nb / V")
+    sim2.evaluate("dVdt(t, na, nb, nc, V) = F")
+    sim2.evaluate("result_reaction = ndsolve([dtdt, dnadt, dnbdt, dncdt, dVdt], [0, na0, nb0, nc0, V0], dt, tfinal)")
+    //console.log(sim2.evaluate("result_reaction"))
+
+    // Extract the useful information from the results so it can be plotted
+    const data_nA = sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,2])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
+    const data_nB =     sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,3])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
+    const data_nC = sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,4])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
+    const data_V =     sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,5])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
+    const data_unpowered =  sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,4])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
+    var nA_values = sim2.evaluate("result_reaction[:,2]").toArray()
+    var nB_values = sim2.evaluate("result_reaction[:,3]").toArray()
+    var nC_values = sim2.evaluate("result_reaction[:,4]").toArray()
+    var V_values = sim2.evaluate("result_reaction[:,5]").toArray()
+    const t_values = sim2.evaluate("result_reaction[:,1]").toArray()
+const data_cA = concentration_calc(nA_values,V_values,t_values)
+const data_cB = concentration_calc(nB_values,V_values,t_values)
+const data_cC = concentration_calc(nC_values,V_values,t_values)
+
+// putting the concentration values into arrays for plotting
+var data_Vol = [];
+for (var i = 0; i < V_values.length; i++) {
+var json = {x: t_values[i]/1, y: V_values[i] / 1 };
+data_Vol.push(json);
+}
+   
+// Plotting molar amounts
+    window['chart'] = new Chart(document.getElementById('canvas1'), {
+      responsive: 'true',
+      type: 'line',
+      data: {
+        datasets: [{
+          label: "c_A",
+          data: data_nA,
+          fill: false,
+          borderColor: "red",
+          pointRadius: 0
+        }, {
+          label: "n_B",
+          data: data_nB,
+          fill: false,
+          borderColor: "green",
+          pointRadius: 0
+        }, {
+          label: "n_C",
+          data: data_nC,
+          fill: false,
+          borderColor: "orange",
+          pointRadius: 0
+        }]
+      },
+      options: {
+        title: {
+            display: true,
+            text: 'Molar amounts'
+               },
+        scales: {
+          xAxes: [{
+            type: 'linear',
+            position: 'bottom',
+            scaleLabel: {
+                          display: true,
+                          labelString: 'Time [s]'
+                        }
+            
+          }],
+          yAxes: [{
+            type: 'linear',
+            scaleLabel: {
+                          display: true,
+                          labelString: 'Molar amount [mol]'
+                        }
+            
+          }]
+        }
+      }
+
+    })
+
+    //Plotting concentration profiles
+    window['chart'] = new Chart(document.getElementById('canvas2'), {
+      responsive: 'true',
+      type: 'line',
+      data: {
+        datasets: [{
+          label: "c_A",
+          data: data_cA,
+          fill: false,
+          borderColor: "red",
+          pointRadius: 0
+        }, {
+          label: "c_B",
+          data: data_cB,
+          fill: false,
+          borderColor: "green",
+          pointRadius: 0
+        }, {
+          label: "c_C",
+          data: data_cC,
+          fill: false,
+          borderColor: "orange",
+          pointRadius: 0
+        }]
+      },
+      options: {
+        title: {
+            display: true,
+            text: 'Concentration profiles'
+               },
+        scales: {
+          xAxes: [{
+            type: 'linear',
+            position: 'bottom',
+            scaleLabel: {
+                          display: true,
+                          labelString: 'Time [s]'
+                        }
+            
+          }],
+          yAxes: [{
+            type: 'linear',
+            scaleLabel: {
+                          display: true,
+                          labelString: 'Concentration [mol/L]'
+                        }
+            
+          }]
+        }
+      }
+
+    })
+
+    //Plotting volume as a function of time
+    window['chart'] = new Chart(document.getElementById('canvas3'), {
+      responsive: 'true',
+      type: 'line',
+      data: {
+        datasets: [{
+          label: "V",
+          data: data_Vol,
+          fill: false,
+          borderColor: "black",
+          pointRadius: 0
+        }]
+      },
+      options: {
+        title: {
+            display: true,
+            text: 'Filling volume'
+               },
+        scales: {
+          xAxes: [{
+            type: 'linear',
+            position: 'bottom',
+            scaleLabel: {
+                          display: true,
+                          labelString: 'Time [s]'
+                        }
+            
+          }],
+          yAxes: [{
+            type: 'linear',
+            scaleLabel: {
+                          display: true,
+                          labelString: 'Volume [L]'
+                        }
+            
+          }]
+        }
+      }
+
+    })
+
+}
+  </script>
+
+</body>
+</html>
