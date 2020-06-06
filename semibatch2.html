@@ -111,6 +111,10 @@ text-align: center;
   <div class="item3" style="position:relative; height:1fr; width:1fr">  <!-- Row 3 column 1 start--> 
     <canvas id="canvas3"></canvas>
 </div> <!-- Row 3 column 1 end--> 
+<div class="item1" style="position:relative; height:1fr; width:1fr">  <!-- Row 3 column 2 start--> 
+  <canvas id="canvas4"></canvas>
+</div> <!-- Row 3 column 2 end--> 
+
 
 </div>  <!-- Container end--> 
 
@@ -155,10 +159,7 @@ storage.push(json);
 return storage
     }
     function myFunction(){
-
-
     // Create a math.js context for our simulation. Everything else occurs in the context of the expression parser!
-
     const sim2 = math.parser()
     var timestep = document.getElementById("timestep_size").value;
     var teststring2 = "dt = " + timestep
@@ -183,7 +184,6 @@ return storage
     nC_init = "nc0 = " + nC_init
     var k_val = document.getElementById("rate_constant").value;
     k_val = "k = " + k_val 
-
     var teststring = "dt = " + timestep + " s"
  
     sim2.evaluate(teststring2)
@@ -198,15 +198,25 @@ return storage
     //sim2.evaluate("V0 = 6000") // [L] initial volume in reactor
     sim2.evaluate(nA_init) // [mol] initial amount of component a
     sim2.evaluate(k_val) // [L/mol/s] reaction rate constant
+    sim2.evaluate("T0 = 298")
+    sim2.evaluate("Q = 0")
+    sim2.evaluate("T_set = 353")
+    sim2.evaluate("dHr = 1")
+    sim2.evaluate("Tf = 298")
+    sim2.evaluate("rho = 1")
+    sim2.evaluate("cp = 4186")
+    sim2.evaluate("eint0 = T0 - T_set")
     console.log(sim2.evaluate(nA_init).toString())
 
     // New equations
-    sim2.evaluate("dtdt(t, na, nb, nc, V) = 1")
-    sim2.evaluate("dnadt(t, na, nb, nc, V) = F*caF - k * na * nb / V")
-    sim2.evaluate("dnbdt(t, na, nb, nc, V) = - k * na * nb / V")
-    sim2.evaluate("dncdt(t, na, nb, nc, V) = k * na * nb / V")
-    sim2.evaluate("dVdt(t, na, nb, nc, V) = F")
-    sim2.evaluate("result_reaction = ndsolve([dtdt, dnadt, dnbdt, dncdt, dVdt], [0, na0, nb0, nc0, V0], dt, tfinal)")
+    sim2.evaluate("dtdt(t, na, nb, nc, V, T, eint) = 1")
+    sim2.evaluate("dnadt(t, na, nb, nc, V, T, eint) = F*caF - k * na * nb / V")
+    sim2.evaluate("dnbdt(t, na, nb, nc, V, T, eint) = - k * na * nb / V")
+    sim2.evaluate("dncdt(t, na, nb, nc, V, T, eint) = k * na * nb / V")
+    sim2.evaluate("dVdt(t, na, nb, nc, V, T, eint) = F")
+    sim2.evaluate("dTdt(t, na, nb, nc, V, T, eint) = (F*rho*cp*(Tf-T)+k*na*nb*dHr/V+Q)/(V*rho*cp)")
+    sim2.evaluate("deintdt(t, na, nb, nc, V, T, eint) = T-T_set") // 
+    sim2.evaluate("result_reaction = ndsolve([dtdt, dnadt, dnbdt, dncdt, dVdt, dTdt, deintdt], [0, na0, nb0, nc0, V0, T0, eint0], dt, tfinal)")
     //console.log(sim2.evaluate("result_reaction"))
 
     // Extract the useful information from the results so it can be plotted
@@ -219,16 +229,24 @@ return storage
     var nB_values = sim2.evaluate("result_reaction[:,3]").toArray()
     var nC_values = sim2.evaluate("result_reaction[:,4]").toArray()
     var V_values = sim2.evaluate("result_reaction[:,5]").toArray()
+    var T_values = sim2.evaluate("result_reaction[:,6]").toArray()
+    var eint_values = sim2.evaluate("result_reaction[:,7]").toArray()
     const t_values = sim2.evaluate("result_reaction[:,1]").toArray()
 const data_cA = concentration_calc(nA_values,V_values,t_values)
 const data_cB = concentration_calc(nB_values,V_values,t_values)
 const data_cC = concentration_calc(nC_values,V_values,t_values)
 
-// putting the concentration values into arrays for plotting
+// putting the values into arrays for plotting
 var data_Vol = [];
+var data_T = [];
+var data_eint = [];
 for (var i = 0; i < V_values.length; i++) {
 var json = {x: t_values[i]/1, y: V_values[i] / 1 };
+var json2 = {x: t_values[i]/1, y: T_values[i] / 1 };
+var json3 = {x: t_values[i]/1, y: eint_values[i] / 1 };
 data_Vol.push(json);
+data_T.push(json2);
+data_eint.push(json3);
 }
    
 // Plotting molar amounts
@@ -377,6 +395,47 @@ data_Vol.push(json);
       }
 
     })
+
+    window['chart'] = new Chart(document.getElementById('canvas4'), {
+      responsive: 'true',
+      type: 'line',
+      data: {
+        datasets: [{
+          label: "V",
+          data: data_T,
+          fill: false,
+          borderColor: "black",
+          pointRadius: 0
+        }]
+      },
+      options: {
+        title: {
+            display: true,
+            text: 'Filling volume'
+               },
+        scales: {
+          xAxes: [{
+            type: 'linear',
+            position: 'bottom',
+            scaleLabel: {
+                          display: true,
+                          labelString: 'Time [s]'
+                        }
+            
+          }],
+          yAxes: [{
+            type: 'linear',
+            scaleLabel: {
+                          display: true,
+                          labelString: 'Temperature [K]'
+                        }
+            
+          }]
+        }
+      }
+
+    })
+    
 
 }
   </script>
