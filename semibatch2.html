@@ -84,9 +84,25 @@ text-align: center;
         <input type="text" id="conc_c0" name="conc_c0" value="0"><br>
       </p>
       <p class="p_form">
-        <label for="rate_constant">rate constant k [L/mol/s]:</label>
-        <input type="text" id="rate_constant" name="rate_constant" value="0.1"><br><br><br>
+        <label for="rate_constant">Rate constant k [L/mol/s]:</label>
+        <input type="text" id="rate_constant" name="rate_constant" value="0.1"><br>
     </p>
+    <p class="p_form">
+      <label for="activation_energy">Activation energy Ea [J/mol]:</label>
+      <input type="text" id="activation_energy" name="activation_energy" value="10000"><br>
+  </p>
+  <p class="p_form">
+    <label for="reaction_enthalpy">Reaction enthalpy [J/mol]:</label>
+    <input type="text" id="reaction_enthalpy" name="reaction_enthalpy" value="10000"><br>
+</p>
+    <p class="p_form">
+      <label for="initial_temperature">Initial temperature [deg C]:</label>
+      <input type="text" id="initial_temperature" name="initial_temperature" value="25"><br>
+  </p>
+    <p class="p_form">
+      <label for="feed_temperature">Feed temperature [deg C]:</label>
+      <input type="text" id="feed_temperature" name="feed_temperature" value="25"><br><br><br>
+  </p>
     </form> 
 
     <p>
@@ -121,31 +137,82 @@ text-align: center;
   <script>
 
           // Import the numerical ODE solver
-    math.import({ndsolve:ndsolve})
+    math.import({odesolve:odesolve})
 
-    function ndsolve(f, x0, dt, tmax) {
-      const n = f.size()[0]  // Number of variables
-      const x = x0.clone()   // Current values of variables
-      const dxdt = []        // Temporary variable to hold time-derivatives
-      const result = []      // Contains entire solution
+ function odesystem2(x,par){
 
+F = par[0]
+ caF = par[1]
+ Tf = par[2]
+ Q = par[3]
+
+ k = par[4]
+ rho = par[5]
+ cp = par[6]
+ dHr = par[7]
+ Ea = par[8]
+
+ t = x[0]
+ na = x[1]
+ nb = x[2]
+ nc = x[3]
+ V = x[4]
+ T = x[5]
+ eint = x[6]
+var kr = k*math.exp(-Ea/8.3145/T)
+ dtdt = 1
+ dnadt = F * caF - k * na * nb / V
+ dnbdt = -k * na * nb / V
+ dncdt = k * na * nb / V
+ dVdt = F
+ dTdt = (F*rho*cp*(Tf-T)+k*na*nb*dHr/V+Q)/(V*rho*cp)
+ //dTdt = 0
+ deintdt = T-Tf
+ console.log(dTdt)
+ //deintdt = 0
+ return [dtdt, dnadt, dnbdt, dncdt, dVdt, dTdt, deintdt]
+}
+
+
+    function odesolve(f,x0,tmax,dt,par){
+    //    f: vector of functions returning time derivates
+    //   x0: initial conditions
+    // tmax: end time of integration
+    //   dt: size of time steps
+    //    n: number of variables
+      var x = x0   // Current values of variables
+      num = x.length
+
+    
+      var dxdt = []        // Temporary variable to hold time-derivatives
       const nsteps = math.divide(tmax, dt)   // Number of time steps
-      for(let i=0; i<nsteps; i++) {
-        // Compute derivatives
-        for(let j=0; j<n; j++) {
-          dxdt[j] = f.get([j]).apply(null, x.toArray())
-        }
-        // Euler method to compute next time step
-        for(let j=0; j<n; j++) {
-          x.set([j], math.add(x.get([j]), math.multiply(dxdt[j], dt)))
-        }
-        result.push(x.clone())
-      }
+      result = math.zeros(nsteps+1, 2)      // Contains entire solution
 
-      return math.matrix(result)
+      for(let j=0; j<num; j++) { //Looping over variables
+          result.subset(math.index(0,j),x[j])
+          }
+
+      for(let i=1; i<nsteps; i++) { //Looping over time steps
+
+          dxdt = f(x,par)
+          for(let j=0; j<num; j++) { //Looping over variables
+          x[j] = x[j] + dxdt[j]*dt
+          result.subset(math.index(i,j),x[j])
+          }
+      }
+   
+      return result
     }
 
 
+
+
+
+
+
+
+
+    //var res = odesolve(odesystem, [3,6], 100, 1,[])
 // Function for calculating the concentration from molar amounts and volume
 // input: three vectors n, V and t of same length
 // output: array with x (time) and y (concentration) values for plotting
@@ -161,14 +228,15 @@ return storage
     function myFunction(){
     // Create a math.js context for our simulation. Everything else occurs in the context of the expression parser!
     const sim2 = math.parser()
+    const sim = math.parser()
+    x_zero = []
     var timestep = document.getElementById("timestep_size").value;
     var teststring2 = "dt = " + timestep
     var initial_volume = document.getElementById("initial_volume").value;
+    x_zero[4] = initial_volume/1
 
-    var feed_rate = document.getElementById("feed_rate").value;
-    feed_rate = "F = " + feed_rate
-    var feed_concentration = document.getElementById("feed_concentration").value;
-    feed_concentration = "caF = " + feed_concentration
+
+
     var simulation_time = document.getElementById("simulation_time").value;
     simulation_time = "tfinal = " + simulation_time
     var cA_init = document.getElementById("conc_a0").value;
@@ -177,77 +245,92 @@ return storage
     var nA_init = initial_volume * cA_init
     var nB_init = initial_volume * cB_init
     var nC_init = initial_volume * cC_init
-    initial_volume = "V0 = " + initial_volume
-    cA_init = "ca0 = " + cA_init
-    nA_init = "na0 = " + nA_init
-    nB_init = "nb0 = " + nB_init
-    nC_init = "nc0 = " + nC_init
-    var k_val = document.getElementById("rate_constant").value;
-    k_val = "k = " + k_val 
-    var teststring = "dt = " + timestep + " s"
+    var tsim = document.getElementById("simulation_time").value;
+    var tstep = document.getElementById("timestep_size").value;
+    var Ea = document.getElementById("activation_energy").value;
+    var dHr = document.getElementById("reaction_enthalpy").value;
+    var Tinit = document.getElementById("initial_temperature").value;
+    var Tfeed = document.getElementById("feed_temperature").value;
+var par = []
+
+par[0] = document.getElementById("feed_rate").value;
+par[1] = document.getElementById("feed_concentration").value;
+par[2] = Tfeed
+par[3] = 0 //Heating / cooling [W]
+par[4] = document.getElementById("rate_constant").value;
+par[5] = 1 //Density [kg/L]
+par[6] = 4186 //Heat capacity [J/kg/K]
+par[7] = dHr
+par[8] = document.getElementById("activation_energy").value;
+
+
+
+    x_zero[0] = 0
+    x_zero[1] = nA_init
+    x_zero[2] = nB_init
+    x_zero[3] = nC_init
  
-    sim2.evaluate(teststring2)
-    sim2.evaluate(simulation_time)                  // Simulation duration
+    x_zero[5] = Tinit + 273.15
+    x_zero[6] = Tinit - Tfeed
 
-    sim2.evaluate(feed_rate) // [L/s] Feed rate of component a solution
-    sim2.evaluate(feed_concentration) // [mol / L] Feed concentration of component a solution
-    sim2.evaluate(cA_init) // [mol / L] Initial concentration of component a
-    sim2.evaluate(nB_init) // [mol] Initial amount of component b
-    sim2.evaluate(nC_init) // [mol] Initial amount of component c
-    sim2.evaluate(initial_volume) // [L] initial volume in reactor
-    //sim2.evaluate("V0 = 6000") // [L] initial volume in reactor
-    sim2.evaluate(nA_init) // [mol] initial amount of component a
-    sim2.evaluate(k_val) // [L/mol/s] reaction rate constant
-    sim2.evaluate("T0 = 298")
-    sim2.evaluate("Q = 0")
-    sim2.evaluate("T_set = 353")
-    sim2.evaluate("dHr = 1")
-    sim2.evaluate("Tf = 298")
-    sim2.evaluate("rho = 1")
-    sim2.evaluate("cp = 4186")
-    sim2.evaluate("eint0 = T0 - T_set")
-    console.log(sim2.evaluate(nA_init).toString())
+   // var res = odesolve(odesystem2,x_zero, tsim, tstep, [1, 0.1, 298, 0, 1, 1, 4186, 10000])
+    var res = odesolve(odesystem2,x_zero, tsim, tstep, par)
 
-    // New equations
-    sim2.evaluate("dtdt(t, na, nb, nc, V, T, eint) = 1")
-    sim2.evaluate("dnadt(t, na, nb, nc, V, T, eint) = F*caF - k * na * nb / V")
-    sim2.evaluate("dnbdt(t, na, nb, nc, V, T, eint) = - k * na * nb / V")
-    sim2.evaluate("dncdt(t, na, nb, nc, V, T, eint) = k * na * nb / V")
-    sim2.evaluate("dVdt(t, na, nb, nc, V, T, eint) = F")
-    sim2.evaluate("dTdt(t, na, nb, nc, V, T, eint) = (F*rho*cp*(Tf-T)+k*na*nb*dHr/V+Q)/(V*rho*cp)")
-    sim2.evaluate("deintdt(t, na, nb, nc, V, T, eint) = T-T_set") // 
-    sim2.evaluate("result_reaction = ndsolve([dtdt, dnadt, dnbdt, dncdt, dVdt, dTdt, deintdt], [0, na0, nb0, nc0, V0, T0, eint0], dt, tfinal)")
-    //console.log(sim2.evaluate("result_reaction"))
+resul_size = math.size(res)
+resul_length = math.subset(resul_size, math.index(0))-1
+resul_width = math.subset(resul_size, math.index(1))-1
 
-    // Extract the useful information from the results so it can be plotted
-    const data_nA = sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,2])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
-    const data_nB =     sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,3])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
-    const data_nC = sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,4])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
-    const data_V =     sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,5])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
-    const data_unpowered =  sim2.evaluate("concat(result_reaction[:,1],result_reaction[:,4])").toArray().map(function(e) { return {x: e[0], y: e[1]} })
-    var nA_values = sim2.evaluate("result_reaction[:,2]").toArray()
-    var nB_values = sim2.evaluate("result_reaction[:,3]").toArray()
-    var nC_values = sim2.evaluate("result_reaction[:,4]").toArray()
-    var V_values = sim2.evaluate("result_reaction[:,5]").toArray()
-    var T_values = sim2.evaluate("result_reaction[:,6]").toArray()
-    var eint_values = sim2.evaluate("result_reaction[:,7]").toArray()
-    const t_values = sim2.evaluate("result_reaction[:,1]").toArray()
-const data_cA = concentration_calc(nA_values,V_values,t_values)
-const data_cB = concentration_calc(nB_values,V_values,t_values)
-const data_cC = concentration_calc(nC_values,V_values,t_values)
+//math.subset(resul, math.index(1, 0)) 
+data_NA = []
+data_NB = []
+data_NC = []
+data_Temp = []
+data_Volume = []
 
-// putting the values into arrays for plotting
-var data_Vol = [];
-var data_T = [];
-var data_eint = [];
-for (var i = 0; i < V_values.length; i++) {
-var json = {x: t_values[i]/1, y: V_values[i] / 1 };
-var json2 = {x: t_values[i]/1, y: T_values[i] / 1 };
-var json3 = {x: t_values[i]/1, y: eint_values[i] / 1 };
-data_Vol.push(json);
-data_T.push(json2);
-data_eint.push(json3);
+var_NA = []
+var_NB = []
+var_NC = []
+var_vol = []
+var_t = []
+
+
+
+for (var i = 0; i < resul_length; i++) {  //Looping through time
+  //for (var j = 0; j < resul_width; j++) {
+var temp1 = {x: math.subset(res, math.index(i,0))/1, y: math.subset(res, math.index(i,1))/1 };
+var temp2 = {x: math.subset(res, math.index(i,0))/1, y: math.subset(res, math.index(i,2))/1 };
+var temp3 = {x: math.subset(res, math.index(i,0))/1, y: math.subset(res, math.index(i,3))/1 };
+var temp4 = {x: math.subset(res, math.index(i,0))/1, y: math.subset(res, math.index(i,4))/1 };
+var temp5 = {x: math.subset(res, math.index(i,0))/1, y: math.subset(res, math.index(i,5))/1 };
+var temp6 = math.subset(res, math.index(i,1))/1 //NA
+var temp7 = math.subset(res, math.index(i,2))/1 //NB
+var temp8 = math.subset(res, math.index(i,3))/1 //NC
+var temp9 = math.subset(res, math.index(i,4))/1 //Volume
+var temp10 = math.subset(res, math.index(i,0))/1 //time
+//var json2 = {x: t_values[i]/1, y: T_values[i] / 1 };
+//var json3 = {x: t_values[i]/1, y: eint_values[i] / 1 };
+data_NA.push(temp1);
+data_NB.push(temp2)
+data_NC.push(temp3)
+data_Volume.push(temp4)
+data_Temp.push(temp5)
+var_NA.push(temp6)
+var_NB.push(temp7)
+var_NC.push(temp8)
+var_vol.push(temp9)
+var_t.push(temp10)
+  //}
 }
+
+//data_T.push(json2);
+//data_eint.push(json3);
+//}
+
+const data_concA = concentration_calc(var_NA,var_vol,var_t)
+const data_concB = concentration_calc(var_NB,var_vol,var_t)
+const data_concC = concentration_calc(var_NC,var_vol,var_t)
+
+
    
 // Plotting molar amounts
     window['chart'] = new Chart(document.getElementById('canvas1'), {
@@ -256,19 +339,19 @@ data_eint.push(json3);
       data: {
         datasets: [{
           label: "c_A",
-          data: data_nA,
+          data: data_NA,
           fill: false,
           borderColor: "red",
           pointRadius: 0
         }, {
           label: "n_B",
-          data: data_nB,
+          data: data_NB,
           fill: false,
           borderColor: "green",
           pointRadius: 0
         }, {
           label: "n_C",
-          data: data_nC,
+          data: data_NC,
           fill: false,
           borderColor: "orange",
           pointRadius: 0
@@ -309,19 +392,19 @@ data_eint.push(json3);
       data: {
         datasets: [{
           label: "c_A",
-          data: data_cA,
+          data: data_concA,
           fill: false,
           borderColor: "red",
           pointRadius: 0
         }, {
           label: "c_B",
-          data: data_cB,
+          data: data_concB,
           fill: false,
           borderColor: "green",
           pointRadius: 0
         }, {
           label: "c_C",
-          data: data_cC,
+          data: data_concC,
           fill: false,
           borderColor: "orange",
           pointRadius: 0
@@ -362,7 +445,7 @@ data_eint.push(json3);
       data: {
         datasets: [{
           label: "V",
-          data: data_Vol,
+          data: data_Volume,
           fill: false,
           borderColor: "black",
           pointRadius: 0
@@ -402,7 +485,19 @@ data_eint.push(json3);
       data: {
         datasets: [{
           label: "V",
-          data: data_T,
+          data: data_NA,
+          fill: false,
+          borderColor: "black",
+          pointRadius: 0
+        },{
+          label: "V",
+          data: data_NB,
+          fill: false,
+          borderColor: "black",
+          pointRadius: 0
+        },{
+          label: "V",
+          data: data_NC,
           fill: false,
           borderColor: "black",
           pointRadius: 0
